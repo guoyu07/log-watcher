@@ -1,33 +1,32 @@
-<!--
-
-  This example adapted from Netty project
-
- * Copyright 2010 Red Hat, Inc.
- *
- * Red Hat licenses this file to you under the Apache License, version 2.0
- * (the "License"); you may not use this file except in compliance with the
- * License.  You may obtain a copy of the License at:
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
- * License for the specific language governing permissions and limitations
- * under the License.
- *
- -->
-
 <html>
 <head>
   <title>SockJS Test</title>
   <style type="text/css">
-	#messages{min-width:200px;min-height:400px;border:2px solid #cccccc;}
+	#messages{
+		min-width:200px;
+		min-height:400px;
+		border:2px solid #cccccc;
+		background-color: #000000;
+		color:#00FF00;
+	}
   </style>
-  <script src="/lib/sockjs/sockjs-0.3.4.min.js"></script>
+  <script type="text/javascript" src="/lib/sockjs/sockjs-0.3.4.min.js"></script>
+  <script type="text/javascript" src="/lib/vertx/vertxbus.js"></script>
+  <script type="text/javascript" src="/lib/jquery/jquery-1.10.2.js"></script>
+  <script type="text/javascript" src="/lib/jquery-hightlighter/jquery.highlighter-1.0.0.js"></script>
 </head>
 <body>
 
+<form onsubmit="return false;">
+  <input type="text" name="message" value="Hello, World!"/>
+  <input type="button" value="Send SockJS data" id="send"/>
+  关键字：<input type="text" id="keyword" value="" />
+  <button id="requestDesktopNotice">发现关键词时通知我</button>
+  缓存行：<input type="text" id="bufferSize" value="1000" />
+</form>
+<div id="noticeMp3"></div>
+<div id="status"></div>
+<ol id="messages"></ol>
 <script>
 	function getContextPath(){
 	    var contextPath = document.location.pathname;
@@ -36,44 +35,173 @@
 	    delete index;
 	    return contextPath;
 	}
-	var sock = new SockJS(getContextPath() + '/log-watcher');
-	sock.onopen = function() {
-	  console.log('open');
-	  sock.send("register");
-	};
-	sock.onmessage = function(e) {
-	  console.log('message', e.data);
-	  //alert('received message echoed from server: ' + e.data);
-	  //document.getElementById("display").value = e.data;
-	  var messages = document.getElementById("messages");
-	  messages.innerHTML += e.data;
-	};
-	sock.onclose = function() {
-	  console.log('close');
-	};
 	
-	function send(message) {
-	
-	  if (sock.readyState === SockJS.OPEN) {
-	    console.log("sending message")
-	    sock.send(message);
-	  } else {
-	    console.log("The socket is not open.");
-	  }
-	}
-	
-	function enterPress(event){
-	 //console.log(event.keyCode);
-	 if(13 === event.keyCode){
-	  send(event.target.form.message.value)
-	 }
-	}
+	$(function(){
+		var eb = null;
+		var bufSize = 1000;
+		
+		var sendBtn =  $("#send");
+		var messageBox = $("#message");
+		var messageScreen = $("#messages");
+		var statusBox = $("#status");
+		var keywordBox = $("#keyword");
+		var bufferSizeBox = $("#bufferSize");
+		var noticeMp3 = $("#noticeMp3");
+		var NOTICE_MP3_URL = getContextPath() + "/audio/notice.mp3";
+		
+		var keywords = [];
+		
+		setKeywords();
+		
+		sendBtn.click(function(){
+			send(messageBox.value());
+		});
+		
+		messageBox.keyup(function(event){
+			if(13 === event.keyCode){
+				send(event.target.form.message.value)
+			}
+		});
+		
+		$("#requestDesktopNotice").click(function(){
+			if(window.webkitNotifications){
+				window.webkitNotifications.requestPermission();
+			}
+		});
+		
+		bufferSizeBox.keyup(function(event){
+			if(13 === event.keyCode){
+				if(/\d+/.test(bufferSizeBox.val())){
+					bufSize = parseInt(bufferSizeBox.val(), 10);
+					if(messageScreen.children().length > bufSize){
+						var oldCount = messageScreen.children().length - bufSize;
+						for(var i = 0; i < oldCount; i++){
+							$(Array.prototype.shift.apply(messageScreen[0].children)).remove();; 
+						}
+					}
+				}
+			}
+		});
+		
+		keywordBox.change(function(event){
+			setKeywords();
+		}).keyup(function(event){
+			if(13 === event.keyCode){
+				setKeywords();
+				messageScreen.children().each(function(){
+					$(this).highlight(keywords.join(" "), {needUnhighlight: true});
+				});
+			}
+		});
+		
+		function playNoticeMp3(){
+			var mp3 = $(document.createElement("embed"));
+			mp3.attr("src", NOTICE_MP3_URL);
+			mp3.attr("hidden", "true");
+			mp3.attr("width", "0");
+			mp3.attr("height", "0");
+			mp3.css("visibility", "hidden");
+			noticeMp3.empty();
+			noticeMp3.append(mp3);
+		}
+		
+		function setKeywords(){
+			var str = keywordBox.val();
+			var arr = null;
+			if(str){
+
+				arr = $.map(keywordBox.val().split(/[,;\s]/), function(key, index){
+					var trimKey = $.trim(key);
+					return (key == "" ? null : trimKey);
+				});
+			}
+			
+			if(arr){
+				keywords = arr;
+			}
+		}
+		
+		function showMessage(message){
+			var children = messageScreen.children();
+			var newLine = $(document.createElement("li"));
+			newLine.html(message);
+			if(children.length >= bufSize){
+				children.first().remove();
+			}
+			
+			if(keywords.length > 0){
+				newLine.highlight(keywords.join(" "), {needUnhighlight: true});
+				var findKeywords = [];
+				for(i in keywords){
+					if(new RegExp(keyword).test(message)){
+						findKeywords.push(keywords[i]);
+					}
+				}
+				if(findKeywords.length > 0){
+					//playNoticeMp3();
+					showNotification("发现关键字：" + findKeywords.join(" "));
+				}
+			}
+			
+			messageScreen.append(newLine);
+		}
+
+	    function openConn(){
+	    	if(!eb){
+	        	eb = new vertx.EventBus(getContextPath() + '/eventbus', {address: 'register', debug: true});
+	        	if(eb){
+	        		eb.onopen = function() {
+						console.log("socket opend");
+	           		  
+		       			eb.registerHandler('register', function(message) {
+		
+		           	    	console.log('register message: ' + JSON.stringify(message));
+		           	     	statusBox.html(message);
+		           	    });
+		            	    
+		           	    eb.registerHandler('message', function(message) {
+		           	  	  	//console.log('received a message: ' + JSON.stringify(message));
+		           	        //var messages = document.getElementById("messages");
+		           	  	  	//messages.innerHTML += message;
+		           	  	  	var lines = message.split("\n");
+		           	  	  	for(var i in lines){
+		           	  	  		showMessage(lines[i]);
+		           	  	  	}
+		           	    });
+	            	}
+	            	    
+	           	    eb.onclose = function() {
+	           	    	statusBox.html("socket closed");
+	           	    }
+	        	}
+	        }
+	    }
+			
+		function send(message) {
+		
+		  if (eb && eb.readyState() === SockJS.OPEN) {
+		    console.log("sending message: " + message)
+		    eb.send('message', message);
+		  } else {
+		    console.log("The socket is not open.");showNotification();
+		  }
+		}
+		
+		function showNotification(message) {  
+	        if (window.webkitNotifications && window.webkitNotifications.checkPermission() === 0) {  
+	            var popup = window.webkitNotifications.createNotification('/images/notice.jpg', '日志监控', message);
+	            popup.ondisplay = function(event) {
+           	        setTimeout(function() {
+           	            event.currentTarget.cancel();
+           	        }, 3000);
+           	    }
+				
+	            popup.show();
+	        }  
+	    } 
+		
+		openConn();
+	});
 </script>
-<form onsubmit="return false;">
-  <input type="text" name="message" value="Hello, World!" onkeyup="enterPress(event)"/>
-  <input type="button" value="Send SockJS data" onclick="send(this.form.message.value)"/>
-  <!-- <textarea id="display" style="width:300px;height:100px;display:block;" readonly="readonly"></textarea> -->
-</form>
-<div id="messages"></div>
 </body>
 </html>

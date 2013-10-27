@@ -7,8 +7,7 @@ import java.io.RandomAccessFile;
 import net.contentobjects.jnotify.JNotify;
 import net.contentobjects.jnotify.JNotifyException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.log4j.Logger;
 
 import cn.ihuhai.logwatch.listener.IContentListener;
 import cn.ihuhai.logwatch.listener.IFileNotifyListener;
@@ -19,7 +18,7 @@ import cn.ihuhai.logwatch.notify.INotifyService;
 
 public class ContentChangeNotifyService implements IContentChangeNotifyService {
 	
-	private Logger logger = LoggerFactory.getLogger(ContentChangeNotifyService.class);
+	private Logger logger = Logger.getLogger(ContentChangeNotifyService.class);
 	private static String LINE_SEPARATOR = System.getProperty("line.separator");
 	private static int LINE_SEPARATOR_LENGTH = LINE_SEPARATOR.toCharArray().length;
 	
@@ -30,13 +29,13 @@ public class ContentChangeNotifyService implements IContentChangeNotifyService {
 	public void watch(String dir, final String encoding, final IContentListener contentListener, String... patterns) throws JNotifyException {
 		if(patterns.length > 0){
 			for(String pattern : patterns){
-				listener.watchFile(pattern, JNotify.FILE_MODIFIED, new AbstractJNotifyListener() {
+				listener.watchFile(pattern, JNotify.FILE_CREATED | JNotify.FILE_MODIFIED, new AbstractJNotifyListener() {
 					long fileSize = 0;
-					boolean first = true;			
-
-					@Override
-					public void fileModified(int wd, String rootPath, String name) {
+					boolean first = true;	
+					
+					private void fileChanged(int wd, String rootPath, String name){
 						String filePath = rootPath + File.separator + name;
+						
 						if(first){
 							fileSize = listener.getInitFileSize(filePath);
 							first = false;
@@ -75,6 +74,18 @@ public class ContentChangeNotifyService implements IContentChangeNotifyService {
 						}
 						
 						fileSize = file.length();
+					}
+
+					@Override
+					public void fileModified(int wd, String rootPath, String name) {
+						logger.info("file modified");
+						fileChanged(wd, rootPath, name);
+					}
+
+					@Override
+					public void fileCreated(int wd, String rootPath, String name) {
+						logger.info("file created");
+						fileChanged(wd, rootPath, name);
 					}
 
 				});

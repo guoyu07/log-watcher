@@ -25,6 +25,7 @@ public class StaticFileRoute extends AbstractRoute {
 		statics.addString(".jpeg");
 		statics.addString(".png");
 		statics.addString(".gif");
+		statics.addString(".mp3");
 		DEFAULT_CONFIG.putArray(STATIC_FILE_EXT, statics);
 		DEFAULT_CONFIG.putString(WEB_ROOT, DEFAULT_WEB_ROOT);
 	}
